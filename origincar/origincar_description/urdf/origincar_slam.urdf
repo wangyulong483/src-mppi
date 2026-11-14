@@ -1,0 +1,86 @@
+<?xml version="1.0"?>
+<!--
+  origincar SLAM/导航专用 URDF (参考 project_help/laser_slam_only.urdf)
+  用途: 由 robot_state_publisher 发布全部固定连杆 TF, 供 SLAM / Nav2 使用。
+  TF 链: base_footprint -> base_link -> laser_link
+                        \-> (base_link) -> bmi088_link
+  与 project_help 区别: IMU 用 BMI088, frame 为 bmi088_link (madgwick 输出帧),
+  挂在 base_link 下 (与 base_serial 里 base_to_bmi088 一致)。
+  odom -> base_footprint 由 EKF (robot_localization) 发布, 不在本 URDF 内。
+-->
+<robot name="origincar_laser">
+
+  <!-- 地面投影, 里程计/导航的 base frame -->
+  <link name="base_footprint">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <sphere radius="0.01"/>
+      </geometry>
+      <material name="white">
+        <color rgba="1 1 1 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- 车体主体 -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <box size="0.276 0.164 0.08"/>
+      </geometry>
+      <origin rpy="0 0 0" xyz="0 0 0.07"/>
+      <material name="dark_red">
+        <color rgba="0.4 0.039 0.039 1"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- BMI088 IMU (madgwick 输出 /imu/data 的 frame) -->
+  <link name="bmi088_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.02 0.02 0.02"/>
+      </geometry>
+      <material name="blue">
+        <color rgba="0 0 0.8 0.5"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- 激光雷达 (Lslidar N10), 驱动 frame_id = laser_link -->
+  <link name="laser_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <cylinder length="0.02" radius="0.02"/>
+      </geometry>
+      <material name="black">
+        <color rgba="0 0 0 0.5"/>
+      </material>
+    </visual>
+  </link>
+
+  <!-- base_footprint -> base_link (车体上抬 7cm) -->
+  <joint name="footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 0.07" rpy="0 0 0"/>
+  </joint>
+
+  <!-- base_link -> bmi088_link (IMU 与 base_link 重合, 待实车标定安装朝向) -->
+  <joint name="bmi088_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="bmi088_link"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- base_link -> laser_link (雷达在车体上方 7.5cm; 沿用 project_help 值) -->
+  <joint name="laser_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="laser_link"/>
+    <origin xyz="0 0 0.075" rpy="0 0 0"/>
+  </joint>
+
+</robot>

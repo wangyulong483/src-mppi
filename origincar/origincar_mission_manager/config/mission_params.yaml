@@ -1,0 +1,17 @@
+# origincar_mission_manager 参数
+mission_manager:
+  ros__parameters:
+    # ── 帧名 ─────────────────────────────────────────────
+    map_frame: "map"
+    base_frame: "base_footprint"
+
+    # ── 时序参数 ─────────────────────────────────────────
+    transition_duration: 0.5             # 段1→段2零速制动时长 (s)
+    amcl_settle_sec: 2.0                # 段3 AMCL 收敛等待 (s)
+    control_rate: 10.0                   # 主循环频率 (Hz)
+
+    # ── 路点 (map 帧, 与建图一致) ────────────────────────
+    start:       [-1.985, -0.014, 0.262]    # 起点 (出站起点, 与 P 点位置相同但朝向相反)
+    seg1_entry:  [0.843, -1.078, 0.262]     # 黄色通道入口 (段1终点=段2起点); +x 5cm 微偏(2026-07-19)
+    parking:     [-1.844,  0.231, -2.880]   # P 点 (段3入站终点, 起点系 x-20cm,y+20cm)
+    seg3_goal:   [-1.844,  0.231, -2.880]   # 段3回P点

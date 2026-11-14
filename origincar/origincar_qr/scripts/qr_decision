@@ -1,0 +1,10 @@
+#!/usr/bin/env python3
+"""安装入口包装：ros2 run origincar_qr qr_decision。
+
+实际逻辑在 origincar_qr.qr_decision 模块中，此处仅转发 main()，
+以便 install(PROGRAMS ...) 安装出无 .py 后缀的可执行名 qr_decision。
+"""
+from origincar_qr.qr_decision import main
+
+if __name__ == '__main__':
+    main()

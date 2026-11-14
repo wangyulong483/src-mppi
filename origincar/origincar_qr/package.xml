@@ -1,0 +1,36 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>origincar_qr</name>
+  <version>0.0.0</version>
+  <description>
+    OriginCar 二维码扫描与决策包（由 qr_decoder + origincar_qr 合并而来）。
+    qr_decoder(C++/OpenCV WeChatQRCode) 从 Aurora930 深度相机解码二维码发布 /sign；
+    qr_decision(Python) 订阅 /sign + /odom 做方向判断并发布 /qr_event。
+  </description>
+  <maintainer email="support@ps-micro.com">GuYueHome</maintainer>
+  <license>Apache 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_python</buildtool_depend>
+
+  <!-- qr_decoder (C++) -->
+  <depend>rclcpp</depend>
+  <depend>std_srvs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>cv_bridge</depend>
+  <depend>libopencv-dev</depend>
+
+  <!-- qr_decision (Python) -->
+  <depend>rclpy</depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

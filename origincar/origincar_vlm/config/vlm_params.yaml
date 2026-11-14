@@ -1,0 +1,16 @@
+# 阿里云百炼 DashScope VLM API 配置模板 (OpenAI兼容)
+# 复制为 vlm_params.local.yaml 填入真实 API Key (不要提交到 git)
+
+dashscope:
+  api_key: "sk-ws-H.EHMYXEL.FrRF.MEQCIAwLkXMEuoaBtVf4BbPybwdZqeepKN3lmJ0svdOqa-PXAiBiDpwI-dEc81oAs_CyKc2phRc8yTJJNllB2Cq5MFmLzg"
+  model_id: "qwen3.7-plus"           # Qwen3.7-Plus 多模态模型
+  endpoint: "https://llm-cjkdp6ay5b8gfn8s.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions"
+  max_tokens: 256                     # 最大输出 token
+  temperature: 0.3                    # 低温度=更确定的输出
+  timeout_sec: 30.0                   # HTTP 超时 (秒), 视觉模型需更长时间
+
+vlm:
+  prompt: "请详细描述这张图片中的内容，特别关注是否有人形立牌、人物模型或标识牌。描述其外观特征、颜色、文字内容（如有）、姿态和位置。立牌主题是关于医疗场景的，不少于300字"
+  trigger_indices: []                 # 路点索引列表, 如 [30, 31, 60, 61]
+  cooldown_sec: 5.0                   # 两次触发最小间隔 (秒), 防止连续拍照
+  enable_debug: false                 # 调试模式: 保存触发帧到 /tmp/vlm_debug.jpg

@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>origincar_compition</name>
+  <version>0.0.0</version>
+  <description>
+    OriginCar 竞赛任务状态机: 一个启动文件拉起底盘/相机/雷达/导航/扫码,
+    自动执行 起点初始化 → 去任务发布点(途中扫码+过半改道) → 硬编码倒车右转复位车头朝向
+    → Nav2 前往黄色通道入口(到达朝向=起点) 的流程。
+  </description>
+  <maintainer email="support@ps-micro.com">GuYueHome</maintainer>
+  <license>Apache 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <!-- 状态机 C++ 依赖 -->
+  <depend>rclcpp</depend>
+  <depend>rclcpp_action</depend>
+  <depend>nav2_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>nav_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>tf2</depend>
+  <depend>tf2_ros</depend>
+  <depend>tf2_geometry_msgs</depend>
+
+  <!-- launch 编排的其它功能包 (运行期) -->
+  <exec_depend>origincar_nav</exec_depend>
+  <exec_depend>origincar_bringup</exec_depend>
+  <exec_depend>origincar_base</exec_depend>
+  <exec_depend>origincar_qr</exec_depend>
+  <exec_depend>lslidar_driver</exec_depend>
+  <exec_depend>deptrum-ros-driver-aurora930</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

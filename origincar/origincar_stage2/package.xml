@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>origincar_stage2</name>
+  <version>0.0.1</version>
+  <description>段3 状态机: 环道循迹(顺/逆时针) + 深度相机锥桶开环避障 (总控, C++)</description>
+  <maintainer email="wangyulong483@example.com">wangyulong483</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>rclcpp</depend>
+  <depend>rcl_interfaces</depend>
+  <depend>std_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+
+  <!-- 一键 launch 组合启动: 底盘+惯导, 二维雷达+探测, 循迹 -->
+  <exec_depend>origincar_base</exec_depend>
+  <exec_depend>origincar_inertial_nav</exec_depend>
+  <exec_depend>lslidar_driver</exec_depend>
+
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

@@ -1,0 +1,57 @@
+# ============================================================================
+# origincar_compition 任务状态机参数
+# 路点数值来源: origincar_nav/config/waypoints.yaml (map 系, 手动导航实测)
+# ============================================================================
+mission_state_machine:
+  ros__parameters:
+    map_frame: "map"
+    base_frame: "base_footprint"
+    qr_event_topic: "/qr_event"        # qr_decision 已校验的二维码事件
+    half_progress_threshold: 0.5       # 起点→任务点连线投影 t 超过此值算"过半"
+    amcl_settle_sec: 1.0               # 发布 /initialpose 后等待 AMCL 收敛 (位姿精确已知, 减半)
+
+    # ---- 扫码后复位机动 (硬编码倒车右转, 闭环按 yaw) ----
+    # 方向写死: linear.x<0(倒车) + angular.z>0(车头逆时针=右打舵倒车, 车尾右后摆)。
+    # 若现场发现转反了, 只需翻转 reorient_turn_rate 的符号即可, 无需重编译。
+    reorient_reverse_speed: -0.15      # m/s, 负=倒车
+    reorient_turn_rate:      0.6       # rad/s, 正=车头逆时针
+    reorient_yaw_tolerance:  0.10      # rad (~5.7°), 车头到达起点朝向的容差
+    reorient_settle_sec:     1.2       # 取消 Nav2 后等 velocity_smoother 静默 (>velocity_timeout=1.0)
+    reorient_timeout_sec:    10.0      # 倒车驱动窗口安全上限
+    reorient_max_reverse_dist: 0.5     # 倒车复位最大位移(m), 超出即停, 防一路倒进诊疗室禁区
+    cmd_vel_topic:          "/cmd_vel" # 直接下发到底盘的 Twist 话题
+
+    # ---- 入站 (归程) 参数 (黄色入口 → P 点) ----
+    amcl_settle_inbound_sec: 3.0         # 入站时发布 /initialpose 后等 AMCL 收敛的秒数 (段2后odom漂移大, 需更长)
+    reverse_initial_heading: true        # 入站 initialpose yaw = start.yaw + pi (背对起点)
+
+    # 路点: [x, y, yaw(rad)]
+    # 起点: 出站起点。车头朝向 +x 偏北 (0.262 rad, ~15°)
+    start:  [-1.985, -0.014, 0.262]
+    # P 点 (停车点): 与起点同位置, yaw 相反 (背对起点朝向, ~-165°)。入站终点, 属性独立于起点。
+    # 默认值 = start yaw + π ≈ -2.880; 如需微调可直接改 yaw。
+    # 停偏补偿(2026/07/22): 以起点为原点、起点朝向(0.262)为y轴、⊥为x轴;
+    #   p点偏移 x-20cm, y+20cm。
+    #   map偏移 = -0.20*(0.259,-0.966) + 0.20*(0.966,0.259) = (-0.0518+0.1932, 0.1932+0.0518)
+    #           = (0.1414, 0.2450)
+    #   parking ≈ (-1.985+0.1414, -0.014+0.2450) = (-1.844, 0.231, -2.880)
+    parking: [-1.844, 0.231, -2.880]
+    # 任务发布点。沿与 yellow 相同的坐标系(起点为原点、起点朝向0.262为y轴、
+    # x轴=起点朝向-90°=map方向(0.259,-0.966)): 把任务点 +x 5cm / -y 10cm / 顺时针60°。
+    # → map 偏移 0.05*(0.259,-0.966) - 0.10*(0.966,0.259) = (-0.0836,-0.0742);
+    # yaw = 0.0 + (-60°) = -1.047rad。原值 [0.48,-3.16,0.0]。
+    task:   [0.396, -3.234, -1.047]    # 任务发布点 (已按坐标系搬移, 见上)
+    # 黄色通道入口路点。原实测 (0.83,-1.03,0.262); 2026-07-19 沿"以起点为原点、
+    # 起点朝向(0.262)为y轴、⊥为x轴(使任务点/入口都在第一象限, x轴=起点朝向-90°=
+    # map方向(0.259,-0.966))"这个坐标系, 把入口沿 +x 微移 5cm(实际地图) →
+    # map 偏移 (+0.0130,-0.0483) → (0.843,-1.078)。yaw 仍=起点朝向, 到点要求精确对准。
+    yellow: [0.843, -1.078, 0.262]     # 黄色通道入口路点 (+x 5cm 微偏)
+
+    # 入口到点朝向精确对准: 发入口目标前把 controller_server 的
+    # goal_checker.yaw_goal_tolerance 动态收紧; 发 P 点归程目标前放回(虽 P 点有目标朝向,
+    # 但配合 loose_yaw_tolerance 几乎不限朝向, 确保到点不因 yaw 微差超时)。
+    controller_server_name: "/controller_server"
+    entry_yaw_tolerance: 0.1         # rad(~2.9°), 入口到点朝向容差(越小越准, 太小易到点抖/超时)
+    loose_yaw_tolerance: 3.14          # rad, 非入口目标(P点)放回不限朝向
+    entry_xy_tolerance: 0.10           # m, 入口到点位置容差(收紧到半默认, 配合yaw精对准的绝对锚定)
+    loose_xy_tolerance: 0.18           # m, P点(黄色入口→P归程)到点位置容差; 0.13→0.18 放宽, 配合坐标微调扩大到点窗口

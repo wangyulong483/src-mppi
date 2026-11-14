@@ -1,0 +1,10 @@
+image: keepout_mask.pgm
+mode: scale
+resolution: 0.05
+origin: [-2.65, -4.5, 0]
+negate: 0
+# ★ v4 (2026-07-17): 去除区域C环道keepout, 段2改惯导后Nav2不再驱动环道。
+# 现只保留 "大厅(自由) | 诊疗室(禁区)" 一道分隔墙(region B), yellow通道处留1m缺口。
+# scale模式: pixel 0→LETHAL(254) 挡墙; 130→中等代价缓冲; 252→FREE. 其余全自由。
+occupied_thresh: 1.0
+free_thresh: 0.01

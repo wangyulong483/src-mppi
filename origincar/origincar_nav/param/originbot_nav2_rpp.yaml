@@ -1,0 +1,505 @@
+# =============================================================================
+# Nav2 全栈配置 — origincarPro 平台 (MPPI 版, 源自 src-mppi)
+# 全局规划器: SmacPlannerHybrid (REEDS_SHEPP — 前进+后退，狭窄空间可倒车绕障)
+# 局部控制器: MPPI (Model Predictive Path Integral, Ackermann 运动学)
+# 目标: MPPI 采样优化避障 + 代价评估主动绕行（阿克曼专用）
+# 硬件: RDK X5 (ARM), wheelbase=0.143m, min_turning_radius≈0.30m
+# 场地: 室内 5m×5m，有随机动态障碍物，最终定点结构扫描
+# =============================================================================
+
+amcl:
+  ros__parameters:
+    use_sim_time: False
+    # P 点精确坐标 (Cartographer 纯定位 1193 帧, σ_xy=2-3mm)
+    set_initial_pose: true
+    initial_pose:
+      x: -1.985
+      y: -0.014
+      z: 0.0
+      yaw: 0.262
+    # alpha 放大至 0.45，注入更多噪声补偿阿克曼-差分运动模型差异
+    # 碰撞锥桶后轮子打滑导致里程计虚报位移，增大alpha降低AMCL对虚假里程计的信任
+    alpha1: 0.45
+    alpha2: 0.45
+    alpha3: 0.45
+    alpha4: 0.45
+    alpha5: 0.45
+    base_frame_id: "base_footprint"
+    beam_skip_distance: 0.5
+    beam_skip_error_threshold: 0.9
+    beam_skip_threshold: 0.3
+    do_beamskip: true                 # 启用beamskip：被推开的锥桶不再强烈误导粒子权重
+    global_frame_id: "map"
+    lambda_short: 0.1
+    laser_likelihood_max_dist: 2.0
+    laser_max_range: 100.0
+    laser_min_range: -1.0
+    laser_model_type: "likelihood_field_prob"  # 概率似然场模型，支持beamskip特性
+    max_beams: 60
+    max_particles: 1500
+    min_particles: 300
+    odom_frame_id: "odom"
+    pf_err: 0.05
+    pf_z: 0.99
+    # ★ 关键修复：原值0.0完全禁用了AMCL自动恢复机制！
+    # 撞锥桶后粒子发散无法自行修复→定位彻底丢失→"分不清东南西北"
+    # fast=0.1: 短周期平均权重快速衰减，检测到定位质量下降时注入随机粒子
+    # slow=0.001: 长周期基准，当short_term << long_term时触发全局重定位
+    recovery_alpha_fast: 0.1
+    recovery_alpha_slow: 0.001
+    resample_interval: 2
+    robot_model_type: "nav2_amcl::DifferentialMotionModel"
+    save_pose_rate: 0.5
+    sigma_hit: 0.2
+    tf_broadcast: true
+    transform_tolerance: 1.0
+    update_min_a: 0.10
+    update_min_d: 0.10
+    z_hit: 0.5
+    z_max: 0.05
+    z_rand: 0.5
+    z_short: 0.05
+
+amcl_map_client:
+  ros__parameters:
+    use_sim_time: False
+
+amcl_rclcpp_node:
+  ros__parameters:
+    use_sim_time: False
+
+# =============================================================================
+# Behavior Tree — MPPI 专用
+# Humble 使用 default_nav_to_pose_bt_xml / default_nav_through_poses_bt_xml
+# ★ src-mppi: 默认 BT 指向 MPPI 行为树 (navigate_to_pose_ackermann_mppi.xml)
+#   MPPI BT 中使用 controller_id="MPPI" goal_checker_id="goal_checker"
+#   goal_checker 名称保持与 RPP 版一致, 确保 mission_state_machine 的
+#   setYawGoalTolerance / setXYGoalTolerance 动态容差调整仍然生效
+# =============================================================================
+bt_navigator:
+  ros__parameters:
+    use_sim_time: False
+    global_frame: map
+    robot_base_frame: base_footprint
+    odom_topic: /odom
+    bt_loop_duration: 100                  # 10Hz BT tick（ARM 默认 100Hz 跑不动）
+    default_server_timeout: 500            # halt/cancel 超时 (ms)
+    default_nav_to_pose_bt_xml: "navigate_to_pose_ackermann_mppi.xml"
+    default_nav_through_poses_bt_xml: "navigate_through_poses_ackermann_rpp.xml"
+    plugin_lib_names:
+    - nav2_compute_path_to_pose_action_bt_node
+    - nav2_compute_path_through_poses_action_bt_node
+    - nav2_follow_path_action_bt_node
+    - nav2_smooth_path_action_bt_node
+    - nav2_back_up_action_bt_node
+    - nav2_wait_action_bt_node
+    - nav2_clear_costmap_service_bt_node
+    - nav2_is_stuck_condition_bt_node
+    - nav2_goal_reached_condition_bt_node
+    - nav2_goal_updated_condition_bt_node
+    - nav2_initial_pose_received_condition_bt_node
+    - nav2_reinitialize_global_localization_service_bt_node
+    - nav2_rate_controller_bt_node
+    - nav2_distance_controller_bt_node
+    - nav2_speed_controller_bt_node
+    - nav2_recovery_node_bt_node
+    - nav2_pipeline_sequence_bt_node
+    - nav2_round_robin_node_bt_node
+    - nav2_remove_passed_goals_action_bt_node
+    - nav2_transform_available_condition_bt_node
+    - nav2_time_expired_condition_bt_node
+    - nav2_distance_traveled_condition_bt_node
+
+bt_navigator_rclcpp_node:
+  ros__parameters:
+    use_sim_time: False
+
+# =============================================================================
+# Controller Server — MPPI (Model Predictive Path Integral)
+# ★ src-mppi: 单一 MPPI 控制器, goal_checker 名保持 "goal_checker"
+#   使 mission_state_machine 的 setYawGoalTolerance("goal_checker.yaw_goal_tolerance", ...)
+#   和 setXYGoalTolerance("goal_checker.xy_goal_tolerance", ...) 继续生效.
+#   出站时动态收紧到 entry_yaw_tolerance=0.05 / entry_xy_tolerance=0.10,
+#   归程时动态放回 loose_yaw_tolerance=3.14 / loose_xy_tolerance=0.25.
+# =============================================================================
+controller_server:
+  ros__parameters:
+    use_sim_time: False
+    controller_frequency: 10.0
+    costmap_update_timeout: 0.30
+    failure_tolerance: 10.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+
+    # 插件声明
+    controller_plugins: ["MPPI"]
+    goal_checker_plugins: ["goal_checker"]
+    progress_checker_plugins: ["progress_checker"]
+
+    # ---- Goal Checker: 保留 "goal_checker" 名称, 由 mission_state_machine 动态设容差 ----
+    # 默认值取 MPPI 已验证值, 运行时会被 RPP 遗留的 setYawGoalTolerance/setXYGoalTolerance 覆盖
+    goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.13           # MPPI 实测停车精度; 出站时被收紧到 0.10
+      yaw_goal_tolerance: 0.50          # MPPI 实测进场朝向; 出站时被收紧到 0.05
+      stateful: true
+      symmetric_yaw_tolerance: false
+
+    # ---- Progress Checker ----
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.08
+      movement_time_allowance: 12.0
+
+    # ---- MPPI 控制器: 移植自 Z_project 已通过归程测试的参数 ----
+    MPPI:
+      plugin: "nav2_mppi_controller::MPPIController"
+      time_steps: 28
+      model_dt: 0.10
+      batch_size: 1800
+      vx_std: 0.18
+      vy_std: 0.0
+      wz_std: 0.35
+      vx_max: 0.65
+      vx_min: -0.25
+      vy_max: 0.0
+      wz_max: 2.0
+      ax_max: 1.0
+      ax_min: -1.8
+      ay_max: 0.0
+      ay_min: 0.0
+      az_max: 2.0
+      iteration_count: 1
+      prune_distance: 1.5
+      transform_tolerance: 0.2
+      temperature: 0.25
+      gamma: 0.015
+      motion_model: "Ackermann"
+      visualize: false
+      reset_period: 1.0
+      regenerate_noises: false
+
+      AckermannConstraints:
+        min_turning_r: 0.33
+
+      critics: ["ConstraintCritic", "CostCritic", "GoalCritic",
+        "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic",
+        "PathAngleCritic", "PreferForwardCritic"]
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 8.0          # ★ 5.5→8.0: 避障权重大于路径对齐(6.0), 遇锥桶时优先绕行
+        critical_cost: 220.0
+        consider_footprint: false
+        collision_cost: 1000000.0
+        near_goal_distance: 0.35
+        trajectory_point_step: 2
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 8.0
+        threshold_to_consider: 0.80
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 1.20
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 6.0          # ★ 10.0→6.0: 降低路径跟随权重, 让避障(8.0)优先绕行
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 4
+        threshold_to_consider: 0.35
+        offset_from_furthest: 16
+        use_path_orientations: true
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 6.0
+        offset_from_furthest: 5
+        threshold_to_consider: 0.80
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.35
+        max_angle_to_furthest: 0.8
+        forward_preference: true
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        threshold_to_consider: 0.50
+
+controller_server_rclcpp_node:
+  ros__parameters:
+    use_sim_time: False
+
+# =============================================================================
+# Local Costmap — MPPI 优化参数
+# MPPI实测值：提前避障但不把锥桶间隙封死
+# =============================================================================
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      update_frequency: 10.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_footprint
+      use_sim_time: False
+      rolling_window: true
+      width: 4
+      height: 4
+      resolution: 0.05
+      # 多边形footprint: 车体276×189mm + 前方相机14cm
+      robot_footprint: "[ [0.15, -0.10], [0.15, 0.10], [-0.12, 0.10], [-0.12, -0.10] ]"
+      footprint_padding: 0.03
+      plugins: ["obstacle_layer", "keepout_filter", "inflation_layer"]
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.30          # MPPI实测值：提前避障但不把锥桶间隙封死
+        cost_scaling_factor: 4.0
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/costmap_ctrl"
+        override_lethal_cost: True
+        lethal_override_cost: 252
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          inf_is_valid: True
+          obstacle_min_range: 0.20
+          obstacle_max_range: 2.0
+          raytrace_min_range: 0.0
+          raytrace_max_range: 2.2
+          observation_persistence: 0.0
+      always_send_full_costmap: True
+  local_costmap_client:
+    ros__parameters:
+      use_sim_time: False
+  local_costmap_rclcpp_node:
+    ros__parameters:
+      use_sim_time: False
+
+# =============================================================================
+# Global Costmap — MPPI 优化参数
+# =============================================================================
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      update_frequency: 2.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_footprint
+      use_sim_time: False
+      robot_footprint: "[ [0.15, -0.10], [0.15, 0.10], [-0.12, 0.10], [-0.12, -0.10] ]"
+      footprint_padding: 0.03
+      resolution: 0.05
+      track_unknown_space: true
+      transform_tolerance: 0.5
+      plugins: ["static_layer", "obstacle_layer", "keepout_filter", "inflation_layer"]
+      obstacle_layer:
+        plugin: "nav2_costmap_2d::ObstacleLayer"
+        enabled: True
+        observation_sources: scan
+        scan:
+          topic: /scan
+          max_obstacle_height: 2.0
+          clearing: True
+          marking: True
+          data_type: "LaserScan"
+          inf_is_valid: True
+          obstacle_min_range: 0.20
+          obstacle_max_range: 3.2
+          raytrace_min_range: 0.0
+          raytrace_max_range: 3.5
+          observation_persistence: 0.0
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.22          # MPPI实测值：保留锥桶侧面的可行栅格
+        cost_scaling_factor: 5.0
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/costmap_ctrl"
+        override_lethal_cost: True
+        lethal_override_cost: 252
+      always_send_full_costmap: True
+  global_costmap_client:
+    ros__parameters:
+      use_sim_time: False
+  global_costmap_rclcpp_node:
+    ros__parameters:
+      use_sim_time: False
+
+# =============================================================================
+# Planner Server — SmacPlannerHybrid (阿克曼运动学全局规划)
+# REEDS_SHEPP 前进+后退, 终点进场用解析扩展直连目标位姿.
+# MPPI 优化: 加大搜索预算, 降低 cost_penalty (MPPI 自己评估代价)
+# =============================================================================
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 1.0
+    use_sim_time: False
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlannerHybrid"
+
+      motion_model_for_search: "REEDS_SHEPP"
+      minimum_turning_radius: 0.33
+      tolerance: 0.20
+      angle_quantization_bins: 48
+      max_iterations: 100000
+      max_on_approach_iterations: 10000
+      max_planning_time: 2.5
+      terminal_checking_interval: 500
+      lookup_table_size: 5.0
+      analytic_expansion_ratio: 3.0
+      analytic_expansion_max_length: 1.65
+      analytic_expansion_max_cost: 200.0
+      analytic_expansion_max_cost_override: true
+      reverse_penalty: 3.0
+      change_penalty: 0.15
+      non_straight_penalty: 1.3
+      cost_penalty: 2.0
+      smooth_path: true
+      smoother:
+        max_iterations: 300
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+        do_refinement: true
+      cache_obstacle_heuristic: false
+      allow_unknown: false
+
+planner_server_rclcpp_node:
+  ros__parameters:
+    use_sim_time: False
+
+# =============================================================================
+# Recovery Server — 阿克曼专用（无 Spin！）
+# =============================================================================
+recoveries_server:
+  ros__parameters:
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    cycle_frequency: 10.0
+    recovery_plugins: ["backup", "wait"]
+    backup:
+      plugin: "nav2_recoveries/BackUp"
+      backup_dist: 0.3
+      backup_speed: 0.12
+    wait:
+      plugin: "nav2_recoveries/Wait"
+      wait_duration: 3.0
+    global_frame: odom
+    robot_base_frame: base_footprint
+    transform_timeout: 0.1
+    use_sim_time: False
+    simulate_ahead_time: 2.0
+
+# =============================================================================
+# Smoother Server — Constrained Smoother (DUBIN 路径优化)
+# =============================================================================
+smoother_server:
+  ros__parameters:
+    use_sim_time: False
+    smoother_plugins: ["SmoothPath"]
+
+    SmoothPath:
+      plugin: "nav2_constrained_smoother/ConstrainedSmoother"
+
+      reversing_enabled: true
+      minimum_turning_radius: 0.30
+
+      keep_start_orientation: true
+      keep_goal_orientation: true
+
+      path_downsampling_factor: 2
+      path_upsampling_factor: 1
+
+      w_smooth: 2000000.0
+      w_cost: 0.015
+      w_curve: 20.0
+      w_dist: 0.0
+
+      w_cost_cusp_multiplier: 3.0
+      cusp_zone_length: 2.5
+
+      optimizer:
+        max_iterations: 70
+        debug_optimizer: false
+        gradient_tol: 5000.0
+        fn_tol: 1.0e-15
+        param_tol: 1.0e-20
+
+smoother_server_rclcpp_node:
+  ros__parameters:
+    use_sim_time: False
+
+# =============================================================================
+# 其余节点
+# =============================================================================
+map_server:
+  ros__parameters:
+    use_sim_time: False
+    yaml_filename: "my_map.yaml"
+
+map_saver:
+  ros__parameters:
+    use_sim_time: False
+    save_map_timeout: 5000
+    free_thresh_default: 0.25
+    occupied_thresh_default: 0.65
+
+waypoint_follower:
+  ros__parameters:
+    use_sim_time: False
+    loop_rate: 20
+    stop_on_failure: false
+    waypoint_task_executor_plugin: "wait_at_waypoint"
+    wait_at_waypoint:
+      plugin: "nav2_waypoint_follower::WaitAtWaypoint"
+      enabled: True
+      waypoint_pause_duration: 50
+
+# =============================================================================
+# Velocity Smoother
+# MPPI段3接近P点或遇险时更快收速
+# =============================================================================
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: False
+    smoothing_frequency: 20.0
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+    max_velocity: [0.85, 0.0, 2.8]
+    min_velocity: [-0.30, 0.0, -2.8]
+    max_accel: [1.5, 0.0, 2.5]
+    max_decel: [-2.2, 0.0, -2.5]        # MPPI段3接近P点或遇险时更快收速
+    odom_topic: "odom"
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+
+robot_state_publisher:
+  ros__parameters:
+    use_sim_time: False

@@ -1,0 +1,54 @@
+<root main_tree_to_execute="MainTree">
+  <!--
+  ============================================================================
+  Behavior Tree: 阿克曼 + MPPI 专用 (src-mppi)
+  - 阿克曼底盘不能原地旋转，不包含 Spin
+  - FollowPath 使用 MPPI 控制器 (controller_id="MPPI")
+  - goal_checker_id="goal_checker" 对齐 RPP 版 mission_state_machine 的
+    setYawGoalTolerance / setXYGoalTolerance 动态容差调整
+  - 正常跟踪失败时先保留最新雷达障碍，等待重规划，最后才清图和短距倒车
+  ============================================================================
+  -->
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="4" name="NavigateRecovery">
+      <Sequence name="NavigateWithMPPI">
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathToPose">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+            <Fallback name="ComputePathRecovery">
+              <GoalUpdated/>
+              <Wait wait_duration="0.8"/>
+            </Fallback>
+          </RecoveryNode>
+        </RateController>
+
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="MPPI"
+                      goal_checker_id="goal_checker"/>
+          <Fallback name="FollowPathRecovery">
+            <GoalUpdated/>
+            <Wait wait_duration="0.8"/>
+          </Fallback>
+        </RecoveryNode>
+      </Sequence>
+
+      <Fallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <RoundRobin name="RecoveryActions">
+          <Wait wait_duration="1.0"/>
+          <Sequence name="ClearOnlyAsLastResort">
+            <ClearEntireCostmap name="ClearLocalCostmap"
+                                service_name="local_costmap/clear_entirely_local_costmap"/>
+            <ClearEntireCostmap name="ClearGlobalCostmap"
+                                service_name="global_costmap/clear_entirely_global_costmap"/>
+            <Wait wait_duration="1.0"/>
+          </Sequence>
+          <BackUp name="BoundedBackUpRecovery"
+                  backup_dist="0.15"
+                  backup_speed="0.06"
+                  time_allowance="5.0"/>
+        </RoundRobin>
+      </Fallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

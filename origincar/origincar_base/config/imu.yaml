@@ -1,0 +1,9 @@
+imu_filter_madgwick:
+    ros__parameters:
+        fixed_frame: "base_footprint"
+        use_mag: false            # BMI088 无磁力计
+        publish_tf: false         # 姿态只发话题, TF 交给 robot_localization
+        world_frame: "enu"        # 东-北-天, 与 REP-103 一致
+        orientation_stddev: 0.05
+        gain: 0.1                 # Madgwick 增益: 越小越平滑但收敛慢 (BMI088 低噪, 0.1 合适)
+        # 输入 /imu/data_raw 由 BMI088 bmi088_iio_bridge 提供 (100Hz), 输出 /imu/data

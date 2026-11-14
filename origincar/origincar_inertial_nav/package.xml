@@ -1,0 +1,32 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>origincar_inertial_nav</name>
+  <version>0.0.1</version>
+  <description>段2 惯导功能包：路径打点(纯惯导 IMU+编码器, 遥控跑环路时记录 odom 系轨迹到 CSV)，后续回放/状态机节点</description>
+  <maintainer email="wangyulong483@example.com">wangyulong483</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>std_srvs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <!-- path_follower/path_recorder: map 绝对锚定查 map→odom / 抓 map→base -->
+  <exec_depend>tf2_ros</exec_depend>
+
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+
+  <!-- 一键 launch (record_path.launch.py) 组合启动: 底盘+惯导 (纯惯导, 不用雷达) -->
+  <exec_depend>origincar_base</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
